@@ -3,6 +3,10 @@ import "./App.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 import Amplify, { Auth, API, graphqlOperation } from "aws-amplify";
+import Predictions, {
+  AmazonAIPredictionsProvider,
+} from "@aws-amplify/predictions";
+
 import { listNotes, notesByOwner } from "./graphql/queries";
 import { createNote, deleteNote } from "./graphql/mutations";
 
@@ -10,6 +14,7 @@ import { AmplifyAuthenticator, AmplifySignOut } from "@aws-amplify/ui-react";
 import awsExports from "./aws-exports";
 
 Amplify.configure(awsExports);
+Amplify.addPluggable(new AmazonAIPredictionsProvider());
 
 class Header extends Component {
   render() {
@@ -128,6 +133,7 @@ class NotesList extends Component {
               className="border border-primary rounded p-3 m-3"
             >
               <span>{note.note}</span>
+
               <button
                 type="button"
                 className="close"
@@ -137,6 +143,10 @@ class NotesList extends Component {
               >
                 <i className="fas fa-trash-alt"></i>
               </button>
+              <br />
+              <span className="badge badge-pill badge-primary">
+                {note.sentiment}
+              </span>
             </div>
           ))}
         </div>
@@ -208,8 +218,19 @@ class App extends Component {
   };
 
   addNote = async (note) => {
+    const noteAnalysis = await Predictions.interpret({
+      text: {
+        source: {
+          text: note.note,
+        },
+        type: "ALL",
+      },
+    });
+    var newNote = note;
+    newNote.sentiment = noteAnalysis.textInterpretation.sentiment.predominant;
+
     var result = await API.graphql(
-      graphqlOperation(createNote, { input: note })
+      graphqlOperation(createNote, { input: newNote })
     );
     this.state.notes.push(result.data.createNote);
     this.setState({ notes: this.state.notes });
@@ -223,7 +244,11 @@ class App extends Component {
             <Header />
             <AddNote addNote={this.addNote} />
             <SearchNote searchNote={this.searchNote} />
-            <NotesList notes={this.state.notes} deleteNote={this.deleteNote} />
+            <NotesList
+              notes={this.state.notes}
+              deleteNote={this.deleteNote}
+              analyseText={this.analyseText}
+            />
           </div>
         </div>
       </AmplifyAuthenticator>
